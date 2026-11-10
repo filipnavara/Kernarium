@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# Verifies an iOS static XCFramework prefix with one arm64 device and one
-# arm64 Simulator slice, as dependencies/ios-static-xcframework.sh builds it.
+# Verifies an Apple static XCFramework prefix with one arm64 iOS device, one
+# arm64 Simulator and one arm64 macOS slice, as
+# dependencies/ios-static-xcframework.sh builds it.
 # The caller's script is run with PREFIX and SOURCE_ROOT defined.
 #
 # uml_verify_ios_static_xcframework(
@@ -26,7 +27,8 @@ function(uml_verify_ios_static_xcframework)
 
     set(_xcframework "${PREFIX}/${_arg_FRAMEWORK}.xcframework")
     set(_required "${_xcframework}/Info.plist")
-    foreach(_slice IN ITEMS ios-arm64 ios-arm64-simulator)
+    set(_slices ios-arm64 ios-arm64-simulator macos-arm64)
+    foreach(_slice IN LISTS _slices)
         set(_framework "${_xcframework}/${_slice}/${_arg_FRAMEWORK}.framework")
         list(APPEND _required "${_framework}/${_arg_FRAMEWORK}")
         foreach(_header IN LISTS _arg_HEADERS)
@@ -47,19 +49,21 @@ function(uml_verify_ios_static_xcframework)
         SOURCE_ROOT "${SOURCE_ROOT}"
         PRODUCT ${_arg_PRODUCT})
     string(REGEX REPLACE "^ios-" "" _contract "${_arg_PRODUCT}")
-    foreach(_platform IN ITEMS device simulator)
-        set(_relative "ios-${_platform}-${_contract}-arm64.tsv")
+    foreach(_platform IN ITEMS ios-device ios-simulator macos)
+        set(_relative "${_platform}-${_contract}-arm64.tsv")
         uml_verify_provenance_copy(
             LABEL "${_arg_LABEL}"
             SOURCE "${SOURCE_ROOT}/dependencies/platforms/${_relative}"
             INSTALLED "${PREFIX}/share/uml-dependencies/${_relative}")
     endforeach()
 
-    foreach(_slice IN ITEMS ios-arm64 ios-arm64-simulator)
+    foreach(_slice IN LISTS _slices)
         set(_archive
             "${_xcframework}/${_slice}/${_arg_FRAMEWORK}.framework/${_arg_FRAMEWORK}")
         if(_slice STREQUAL "ios-arm64")
             set(_mach_platform 2)
+        elseif(_slice STREQUAL "macos-arm64")
+            set(_mach_platform 1)
         else()
             set(_mach_platform 7)
         endif()

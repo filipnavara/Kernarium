@@ -30,6 +30,7 @@ slice_binary()
 	ios-arm64) sdk=iphoneos target=arm64-apple-ios27.0 ;;
 	ios-arm64-simulator) sdk=iphonesimulator
 		target=arm64-apple-ios27.0-simulator ;;
+	macos-arm64) sdk=macosx target=arm64-apple-macos27.0 ;;
 	esac
 	target=${4:-$target}
 	object="$TEST_ROOT/object-$$.o"
@@ -39,7 +40,7 @@ slice_binary()
 }
 
 # make_prefix PREFIX FRAMEWORK CONTRACT SOURCE HEADER...: an XCFramework prefix
-# that passes verification, with a device and a Simulator slice.
+# that passes verification, with a device, a Simulator and a macOS slice.
 make_prefix()
 {
 	prefix=$1
@@ -50,7 +51,7 @@ make_prefix()
 	xcframework="$prefix/$framework.xcframework"
 	mkdir -p "$xcframework" "$prefix/share/uml-dependencies"
 	printf '%s\n' fixture >"$xcframework/Info.plist"
-	for slice in ios-arm64 ios-arm64-simulator; do
+	for slice in ios-arm64 ios-arm64-simulator macos-arm64; do
 		bundle="$xcframework/$slice/$framework.framework"
 		mkdir -p "$bundle/Headers" "$bundle/Modules"
 		slice_binary "$bundle/$framework" "$slice" "$source"
@@ -62,8 +63,8 @@ make_prefix()
 	done
 	cp "$ROOT_DIR/dependencies/manifest.tsv" \
 		"$prefix/share/uml-dependencies/manifest.tsv"
-	for platform in device simulator; do
-		cp "$ROOT_DIR/dependencies/platforms/ios-$platform-$contract-arm64.tsv" \
+	for platform in ios-device ios-simulator macos; do
+		cp "$ROOT_DIR/dependencies/platforms/$platform-$contract-arm64.tsv" \
 			"$prefix/share/uml-dependencies/"
 	done
 }
@@ -125,6 +126,17 @@ CASE="$TEST_ROOT/device-in-simulator-slice"
 copy_fixture "$STORAGE" "$CASE"
 cp "$STORAGE/$DEVICE_GPTFDISK/GPTFDisk" "$CASE/$SIMULATOR_GPTFDISK/GPTFDisk"
 expect_cmake_diagnostic "$SIMULATOR_GPTFDISK/GPTFDisk" verify_storage "$CASE"
+
+MACOS_GPTFDISK="GPTFDisk.xcframework/macos-arm64/GPTFDisk.framework"
+CASE="$TEST_ROOT/device-in-macos-slice"
+copy_fixture "$STORAGE" "$CASE"
+cp "$STORAGE/$DEVICE_GPTFDISK/GPTFDisk" "$CASE/$MACOS_GPTFDISK/GPTFDisk"
+expect_cmake_diagnostic "$MACOS_GPTFDISK/GPTFDisk" verify_storage "$CASE"
+
+CASE="$TEST_ROOT/missing-macos-slice"
+copy_fixture "$STORAGE" "$CASE"
+rm -r "$CASE/GPTFDisk.xcframework/macos-arm64"
+expect_cmake_diagnostic "$MACOS_GPTFDISK/GPTFDisk" verify_storage "$CASE"
 
 CASE="$TEST_ROOT/old-deployment-target"
 copy_fixture "$STORAGE" "$CASE"
@@ -219,4 +231,4 @@ copy_fixture "$STORAGE" "$CASE"
 rm "$CASE/share/uml-dependencies/source-trees.tsv"
 expect_cmake_diagnostic "source trees are missing" verify_storage "$CASE"
 
-printf '%s\n' "iOS static XCFramework verifier tests passed"
+printf '%s\n' "Apple static XCFramework verifier tests passed"

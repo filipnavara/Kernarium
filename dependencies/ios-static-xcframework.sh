@@ -5,7 +5,8 @@
 # WORK_ROOT, VERIFY_SCRIPT and JOBS, defines check_source, build_library,
 # install_headers and record_provenance, and then sources this file, which
 # parses the builder's arguments and builds, verifies and publishes the
-# XCFramework with an arm64 device and an arm64 Simulator slice.
+# XCFramework with an arm64 iOS device, an arm64 Simulator and an arm64 macOS
+# slice.
 #
 # build_library runs once per slice with platform, sdk_name, target, sdk_root,
 # ar, ranlib, build_dir and library set, and leaves the static archive at
@@ -164,10 +165,12 @@ build_slice()
 build_slice ios iphoneos "arm64-apple-ios$DEPLOYMENT_TARGET"
 build_slice ios-simulator iphonesimulator \
 	"arm64-apple-ios$DEPLOYMENT_TARGET-simulator"
+build_slice macos macosx "arm64-apple-macos$DEPLOYMENT_TARGET"
 
 "$XCODEBUILD" -create-xcframework \
 	-framework "$TEMP_ROOT/framework-ios/$FRAMEWORK.framework" \
 	-framework "$TEMP_ROOT/framework-ios-simulator/$FRAMEWORK.framework" \
+	-framework "$TEMP_ROOT/framework-macos/$FRAMEWORK.framework" \
 	-output "$STAGE/$FRAMEWORK.xcframework"
 
 PROVENANCE="$STAGE/share/uml-dependencies"
@@ -178,6 +181,8 @@ cp "$ROOT_DIR/dependencies/platforms/ios-device-$CONTRACT-arm64.tsv" \
 	"$PROVENANCE/ios-device-$CONTRACT-arm64.tsv"
 cp "$ROOT_DIR/dependencies/platforms/ios-simulator-$CONTRACT-arm64.tsv" \
 	"$PROVENANCE/ios-simulator-$CONTRACT-arm64.tsv"
+cp "$ROOT_DIR/dependencies/platforms/macos-$CONTRACT-arm64.tsv" \
+	"$PROVENANCE/macos-$CONTRACT-arm64.tsv"
 record_provenance "$PROVENANCE"
 
 publish_verified "$STAGE" "$OUTPUT" verify_output "iOS $LABEL XCFramework"

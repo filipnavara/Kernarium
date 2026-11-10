@@ -41,11 +41,11 @@ script below; per-platform contracts are under [`platforms/`](platforms).
   archiving an application.
 - `ios-network`: the iOS GLib/libslirp network closure.
 - `ios-storage`: the patch-managed GPT fdisk core as a static
-  `GPTFDisk.xcframework`. The standalone macOS Android launcher runs an
+  `GPTFDisk.xcframework`, with iOS device, Simulator and macOS slices. The standalone macOS Android launcher runs an
   installed `sgdisk` instead (see the
   [static disk contract](../android/lineage-24/README.md#static-disk-and-boot-contract)).
 - `ios-compression`: the decode-only zstd library as a static
-  `LibZstd.xcframework`.
+  `LibZstd.xcframework`, with the same three slices.
 - `kernel-host-tools`: pahole and the static libelf the Darwin kernel build
   uses for BTF, at `.build/dependencies/kernel-host-tools`; patch-managed
   Darwin ports that run only on the build host.

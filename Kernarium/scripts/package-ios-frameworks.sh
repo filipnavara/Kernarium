@@ -18,8 +18,7 @@
 # (--runtimes android), built from the kernarium-macos-android preset, and the
 # macOS GPU stack, which renders on KosmicKrisp as the device does. A macOS
 # framework is a versioned bundle, so the shallow GPU frameworks of the macOS
-# prefix are packaged in that layout. The storage and compression
-# XCFrameworks, and the test archives, have no macOS slice yet.
+# prefix are packaged in that layout. The test archives have no macOS slice.
 #
 # --automation packages the automation Linux runtimes, which boot host
 # payloads (Kernarium/README.md), in place of the release ones. The Linux
@@ -689,8 +688,8 @@ if [ "$APP_STORE" -eq 1 ]; then
 fi
 
 # The storage and compression cores carry no Metal dependency, so their
-# XCFrameworks keep both published slices.
-for platform in ios-arm64 ios-arm64-simulator; do
+# XCFrameworks keep every published slice.
+for platform in ios-arm64 ios-arm64-simulator macos-arm64; do
 	binary="$STAGE/GPTFDisk.xcframework/$platform/GPTFDisk.framework/GPTFDisk"
 	[ -f "$binary" ] || fail "missing packaged GPT fdisk core: $binary"
 	binary="$STAGE/LibZstd.xcframework/$platform/LibZstd.framework/LibZstd"
