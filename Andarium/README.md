@@ -53,9 +53,14 @@ image. It is one window, which drives the guest's rotation; a Mac has no
 motion sensors; and the guest keeps running while Andarium is in the
 background, with App Nap and display sleep held off while it runs
 (`Live/HostApplication.swift`). The screens' iOS names map to their Mac
-meaning in `Shared/MacPlatform.swift`. It runs under the hardened runtime with
-the JIT entitlement (`Config/Andarium-macOS.entitlements`), unsandboxed, and
-has no App Store configuration. How the pointer and keyboard reach the guest
+meaning in `Shared/MacPlatform.swift`. It runs in the App Sandbox under the
+hardened runtime (`Config/Andarium-macOS.entitlements`: the JIT, network client
+and server, microphone), so the guest lives in its own container as on iOS, at
+a path with no spaces. Its bundle identifier, `com.imxieyi.andarium.mac`, keeps
+that container apart from the iOS application's when both are installed on a
+Mac. The adb key needs the data-protection keychain, which macOS gives only a
+team-signed build ([signing](../GuestHost/README.md#signing)); an ad-hoc build
+boots a guest without one. It has no App Store configuration. How the pointer and keyboard reach the guest
 is in [`GuestHost/README.md`](../GuestHost/README.md#rules).
 
 `AndariumPreview` is a Simulator-only target built from `Shared` and `Preview`
