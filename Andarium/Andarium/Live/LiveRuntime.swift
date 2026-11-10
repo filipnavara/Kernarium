@@ -3,7 +3,6 @@
 import AndariumCore
 import Foundation
 import Observation
-import UIKit
 
 /// The guest console, read on the runtime's thread for the boot's milestones.
 nonisolated final class ConsoleSink: @unchecked Sendable {
@@ -81,7 +80,7 @@ final class LiveRuntime: RuntimeDriver {
     private var normalRun = false
     /// The runtime runs a guest, from its start until its run returns.
     private var runActive = false
-    private var active = UIApplication.shared.applicationState == .active
+    private var active = HostApplication.isActive
     /// The device's free space, which the run watches. The application's
     /// own reading unless a test supplies another.
     private let freeSpace: @Sendable () -> UInt64
@@ -271,7 +270,7 @@ final class LiveRuntime: RuntimeDriver {
         let width = UInt32(size.width.rounded(.down))
         let height = UInt32(size.height.rounded(.down))
         view.setGuestDisplay(width: width, height: height)
-        UIApplication.shared.isIdleTimerDisabled = true
+        HostApplication.guestRunning(true)
 
         let dataDiskPath = storage.dataDiskPath
         let releasePath = storage.releaseDirectory.path
@@ -445,7 +444,7 @@ final class LiveRuntime: RuntimeDriver {
         view = nil
         geometry = nil
         launching = false
-        UIApplication.shared.isIdleTimerDisabled = false
+        HostApplication.guestRunning(false)
         #if !APP_STORE
         print(ConsoleReport.runtimeReturned(result))
         #endif
@@ -487,6 +486,10 @@ final class LiveRuntime: RuntimeDriver {
     /// The interface orientation of the guest's window; nil while the display
     /// is not in a scene, which leaves the mount as it is.
     private var interfaceMotionAxes: MotionSample.Axes? {
+        #if os(macOS)
+        // A Mac window is upright, and has no sensors to mount.
+        return view?.window == nil ? nil : .portrait
+        #else
         guard let scene = view?.window?.windowScene else { return nil }
         return switch scene.effectiveGeometry.interfaceOrientation {
         case .landscapeLeft: .landscapeLeft
@@ -494,6 +497,7 @@ final class LiveRuntime: RuntimeDriver {
         case .portraitUpsideDown: .portraitUpsideDown
         default: .portrait
         }
+        #endif
     }
 
     private var rotationPolicy: GuestRotationPolicy {
@@ -822,8 +826,8 @@ final class LiveRuntime: RuntimeDriver {
     // MARK: Lifecycle
 
     private func observeLifecycle() {
-        let edges: [(Notification.Name, @MainActor (LiveRuntime) -> Void)] = [
-            (UIApplication.willResignActiveNotification, {
+        let actions: [HostApplication.Edge: @MainActor (LiveRuntime) -> Void] = [
+            .willResignActive: {
                 #if !APP_STORE
                 print(ConsoleReport.application(active: false))
                 #endif
@@ -832,20 +836,21 @@ final class LiveRuntime: RuntimeDriver {
                 $0.motion.stop()
                 $0.updateGuestRotation()
                 $0.pause.willResignActive()
-            }),
-            (UIApplication.didEnterBackgroundNotification, {
+            },
+            .didEnterBackground: {
                 $0.pause.didEnterBackground()
                 $0.updateSpaceWatch()
-            }),
-            (UIApplication.willEnterForegroundNotification, {
+            },
+            .willEnterForeground: {
                 $0.pause.willEnterForeground()
                 $0.updateSpaceWatch()
-            }),
-            (UIApplication.willTerminateNotification, { $0.pause.willTerminate() }),
-            (UIApplication.didBecomeActiveNotification, { $0.didBecomeActive() }),
+            },
+            .willTerminate: { $0.pause.willTerminate() },
+            .didBecomeActive: { $0.didBecomeActive() },
         ]
-        observers = edges.map { name, edge in
-            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        observers = HostApplication.edges.compactMap { name, edgeName in
+            guard let edge = actions[edgeName] else { return nil }
+            return NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     if let self { edge(self) }
                 }
@@ -959,24 +964,5 @@ final class LivePauseEffects: PauseEffects {
         if let deadline {
             _ = finished.wait(timeout: deadline)
         }
-    }
-}
-
-/// A background-task assertion that keeps the process scheduled until it ends:
-/// the caller ends it, or iOS expires it. Ending it twice is harmless.
-@MainActor
-final class PauseTaskAssertion {
-    private var identifier = UIBackgroundTaskIdentifier.invalid
-
-    init(named name: String) {
-        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
-            MainActor.assumeIsolated { self?.end() }
-        }
-    }
-
-    func end() {
-        guard identifier != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(identifier)
-        identifier = .invalid
     }
 }

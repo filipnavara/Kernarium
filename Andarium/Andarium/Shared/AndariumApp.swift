@@ -2,8 +2,11 @@
 
 import AndariumCore
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 
+#if os(iOS)
 @main
 final class AndariumApp: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
@@ -23,6 +26,8 @@ final class AndariumApp: UIResponder, UIApplicationDelegate {
         return configuration
     }
 }
+
+#endif
 
 /// The entry, model and runtime of the process. A scene shows them and owns
 /// only its window: UIKit disconnects a scene it releases and connects one
@@ -45,6 +50,7 @@ final class AndariumProcess {
     }
 }
 
+#if os(iOS)
 final class AndariumSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     /// The process's model, which this scene shows.
@@ -72,6 +78,38 @@ final class AndariumSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
     }
 }
+#else
+/// On a Mac Andarium is one window, which shows the process's model. The
+/// window, not the guest, decides the display's orientation, so the host
+/// drives the guest's rotation from the first frame.
+@main
+struct AndariumApp: App {
+    private let process: AndariumProcess
+
+    init() {
+        // Mesa reads its disk cache's location and limit from the process
+        // environment when the runtime thread creates the guest's screen.
+        // Set them here, before any window or runtime exists.
+        MesaShaderCache.configureBeforeFirstUse()
+        process = AndariumProcess.shared
+        process.model.hostDrivesGuestRotation = true
+    }
+
+    var body: some Scene {
+        Window("Andarium", id: "andarium") {
+            RootView(entry: process.entry)
+                .environment(process.model)
+                .frame(minWidth: 480, minHeight: 360)
+                // The window's size is the scene's geometry.
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { [model = process.model] _ in
+                    model.driver?.sceneGeometryDidChange()
+                }
+        }
+        .defaultSize(width: 1280, height: 800)
+        .windowResizability(.contentMinSize)
+    }
+}
+#endif
 
 /// Clean power-off returns to Home; a failed run waits for a fresh process.
 struct RootView: View {

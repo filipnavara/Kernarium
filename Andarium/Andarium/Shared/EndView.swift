@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import SwiftUI
-import UIKit
 
 /// An unclean end requires a fresh process before the guest can start again.
 struct EndView: View {
@@ -34,7 +33,7 @@ struct EndView: View {
             .frame(maxWidth: 380)
             .padding(.top, 24)
             Button {
-                UIPasteboard.general.string = report
+                HostPasteboard.copy(report)
                 withAnimation { copied = true }
             } label: {
                 Label(copied ? "Copied" : "Copy report", systemImage: copied ? "checkmark" : "doc.on.doc")

@@ -2,7 +2,11 @@
 
 import AndariumCore
 import Foundation
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Where a bug report waits before it is shared: a folder of the temporary
 /// directory, so it is never in Documents (the harness's) and never in a
@@ -85,6 +89,7 @@ enum BugReportSharing {
     /// Shows the sheet; `finished` runs once, after any outcome, including
     /// Cancel. Returns false, without running `finished`, when there is no
     /// window to present from.
+#if os(iOS)
     @discardableResult
     static func present(_ file: URL, finished: @escaping @MainActor () -> Void) -> Bool {
         guard let root = rootViewController() else { return false }
@@ -109,4 +114,51 @@ enum BugReportSharing {
             .flatMap(\.windows)
         return (windows.first(where: \.isKeyWindow) ?? windows.first)?.rootViewController
     }
+#else
+    @discardableResult
+    static func present(_ file: URL, finished: @escaping @MainActor () -> Void) -> Bool {
+        guard let window = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first,
+              let view = window.contentView else { return false }
+        let picker = NSSharingServicePicker(items: [file])
+        let session = SharingSession(finished: finished)
+        picker.delegate = session
+        current = session
+        picker.show(
+            relativeTo: NSRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0),
+            of: view, preferredEdge: .minY)
+        return true
+    }
+
+    /// The picker's session, kept until it finishes.
+    private static var current: SharingSession?
+
+    /// Runs `finished` once: when the picker closes with no service, or the
+    /// chosen service has shared the file or failed to.
+    private final class SharingSession: NSObject, NSSharingServicePickerDelegate, NSSharingServiceDelegate {
+        private var finished: (@MainActor () -> Void)?
+
+        init(finished: @escaping @MainActor () -> Void) {
+            self.finished = finished
+        }
+
+        func sharingServicePicker(_ picker: NSSharingServicePicker, didChoose service: NSSharingService?) {
+            if let service {
+                service.delegate = self
+            } else {
+                finish()
+            }
+        }
+
+        func sharingService(_ service: NSSharingService, didShareItems items: [Any]) { finish() }
+
+        func sharingService(_ service: NSSharingService, didFailToShareItems items: [Any], error: any Error) { finish() }
+
+        private func finish() {
+            guard let finished else { return }
+            self.finished = nil
+            BugReportSharing.current = nil
+            finished()
+        }
+    }
+#endif
 }

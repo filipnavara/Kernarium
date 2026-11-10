@@ -5,7 +5,9 @@ import Foundation
 import Metal
 import os
 import TipKit
+#if os(iOS)
 import UIKit
+#endif
 
 /// The device application's entry: the guest on disk, this device and the
 /// system Andarium carries, and what a harness launch asks for in the
@@ -254,11 +256,15 @@ struct AppEntry {
     static func hostDevice() -> HostDevice {
         let info = ProcessInfo.processInfo
         let name: String
+        #if os(iOS)
         if info.isiOSAppOnMac {
             name = "Mac"
         } else {
             name = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
         }
+        #else
+        name = "Mac"
+        #endif
         // A guest has every processor, at most the count the memory budget is
         // measured for; the memory policy has a row for each of those counts.
         let limit = GuestProcessorLimit.vCPUs(physicalProcessorCount: info.activeProcessorCount)

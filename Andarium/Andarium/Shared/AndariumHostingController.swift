@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#if os(iOS)
 import AndariumCore
 import Observation
 import SwiftUI
@@ -105,3 +106,4 @@ final class AndariumHostingController<Content: View>: UIHostingController<Conten
         }
     }
 }
+#endif

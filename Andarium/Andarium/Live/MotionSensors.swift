@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import AndariumCore
+#if os(iOS)
 import CoreMotion
+#endif
 import Foundation
 
 private nonisolated struct MotionConnector: GuestStreamOpener {
@@ -12,6 +14,7 @@ private nonisolated struct MotionConnector: GuestStreamOpener {
     }
 }
 
+#if os(iOS)
 /// The device's accelerometer and gyroscope. Core Motion needs no iOS
 /// permission for raw readings.
 private final class CoreMotionDevice: MotionDevice, @unchecked Sendable {
@@ -59,6 +62,21 @@ private final class CoreMotionDevice: MotionDevice, @unchecked Sendable {
         }
     }
 }
+#else
+/// A Mac has neither sensor, so a guest's application finds none.
+private final class CoreMotionDevice: MotionDevice, @unchecked Sendable {
+    var hasAccelerometer: Bool { false }
+    var hasGyroscope: Bool { false }
+
+    func start(
+        _ sensor: MotionSample.Sensor, interval: TimeInterval,
+        handler: @escaping @Sendable (Double, Double, Double) -> Void,
+        failure: @escaping @Sendable () -> Void
+    ) {}
+
+    func stop(_ sensor: MotionSample.Sensor) {}
+}
+#endif
 
 /// The device's motion for the running guest. Core Motion runs only for an
 /// enabled, booted, foreground guest, and then only for the sensors an

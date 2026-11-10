@@ -2,7 +2,9 @@
 
 import AndariumCore
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 import UniformTypeIdentifiers
 
 /// Settings while the guest runs, opened from the side keys. It slides up over
@@ -154,7 +156,7 @@ struct SessionSettingsSheet: View {
                     .textSelection(.enabled)
                 Spacer(minLength: 0)
                 Button {
-                    UIPasteboard.general.string = command
+                    HostPasteboard.copy(command)
                     withAnimation(.snappy) { copied = true }
                     Task {
                         try? await Task.sleep(for: .seconds(1.6))

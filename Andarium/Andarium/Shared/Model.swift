@@ -3,6 +3,9 @@
 import AndariumCore
 import Observation
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// A view that shows the guest's statistics.
 enum StatisticsViewer: Hashable {
@@ -192,9 +195,17 @@ final class AppModel {
     @ObservationIgnored var microphone: MicrophoneController?
     /// Opens Andarium's page in the system's Settings. A test puts its own here.
     @ObservationIgnored var openSettings: @MainActor () -> Void = {
+        #if os(iOS)
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
         }
+        #else
+        // A Mac application has no page of its own in System Settings: the
+        // microphone's privacy pane lists it.
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
     private var persistTask: Task<Void, Never>?
     /// The Android operation under way (a bug report, an install), which the

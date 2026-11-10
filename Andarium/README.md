@@ -1,7 +1,7 @@
 # Andarium
 
-Andarium is the iOS application that runs one Android (LineageOS 24, Android
-17) guest on the Darwin runtime. Android ships inside the app; what the user
+Andarium is the iOS and macOS application that runs one Android (LineageOS 24,
+Android 17) guest on the Darwin runtime. Android ships inside the app; what the user
 creates, sizes and erases is the guest. [Kernarium](../Kernarium/README.md)
 stays the developer application for Linux guests and for Android bundles. In
 its development configurations Andarium also runs on an Apple silicon Mac in
@@ -46,6 +46,18 @@ memory limit and extended virtual addressing entitlements
 process (`AndariumProcess`), so a scene that connects again shows the same
 ones.
 
+`AndariumMac` is the native macOS application, built from the same `Shared`,
+`Live` and GuestHost sources against the macOS runtime slice. It embeds the
+runtime and GPU frameworks, KosmicKrisp included, and carries the same system
+image. It is one window, which drives the guest's rotation; a Mac has no
+motion sensors; and the guest keeps running while Andarium is in the
+background, with App Nap and display sleep held off while it runs
+(`Live/HostApplication.swift`). The screens' iOS names map to their Mac
+meaning in `Shared/MacPlatform.swift`. It runs under the hardened runtime with
+the JIT entitlement (`Config/Andarium-macOS.entitlements`), unsandboxed, and
+has no App Store configuration. How the pointer and keyboard reach the guest
+is in [`GuestHost/README.md`](../GuestHost/README.md#rules).
+
 `AndariumPreview` is a Simulator-only target built from `Shared` and `Preview`
 with mock data. It embeds no runtime and boots nothing. Its launch arguments
 (`-screen <name>` and the others in `Preview/AppEntry.swift`) open any screen
@@ -87,6 +99,17 @@ Kernarium/scripts/package-ios-frameworks.sh --runtimes android
 Andarium/scripts/stage-system-image.py
 xcodebuild -project Andarium/Andarium.xcodeproj -scheme Andarium \
     -destination 'generic/platform=iOS' build
+```
+
+The Mac application packages the macOS slice the same way:
+
+```sh
+cmake --preset kernarium-macos-android
+cmake --build --preset kernarium-macos-android
+Kernarium/scripts/package-ios-frameworks.sh --sdk macos --runtimes android
+Andarium/scripts/stage-system-image.py
+xcodebuild -project Andarium/Andarium.xcodeproj -scheme AndariumMac \
+    -destination 'platform=macOS' build
 ```
 
 The frameworks go to `.build/kernarium-xcframeworks`, which Kernarium shares,
