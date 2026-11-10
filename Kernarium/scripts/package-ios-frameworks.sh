@@ -1,18 +1,25 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# Package the verified iOS framework slices used by the Kernarium and Andarium
-# Xcode projects. All output is generated below .build by default.
+# Package the verified iOS and macOS framework slices used by the Kernarium
+# and Andarium Xcode projects. All output is generated below .build by default.
 #
-# --sdk device (the default) and --sdk simulator select the slices; both may
-# be named, and the XCFrameworks then carry both, so Xcode picks the slice for
-# its destination. The device stack renders with Mesa Zink on KosmicKrisp,
+# --sdk device (the default), --sdk simulator and --sdk macos select the
+# slices; any of them may be named together, and the XCFrameworks then carry
+# each, so Xcode picks the slice for its destination. The device stack renders with Mesa Zink on KosmicKrisp,
 # which requires Metal 4. The iOS Simulator exposes no Metal 4 device, so its
 # GPU stack is Mesa's CPU rasterizer with no Vulkan driver: the Simulator
 # slices carry no KosmicKrisp, and KosmicKrisp.xcframework has a device slice
 # alone. Only the Simulator's slices may carry the software renderer; the
 # device slices are checked for it. An iOS device build also runs on an Apple
 # silicon Mac in Designed for iPad mode when no device is attached.
+#
+# The macOS slice is a native macOS application's: the Android runtime alone
+# (--runtimes android), built from the kernarium-macos-android preset, and the
+# macOS GPU stack, which renders on KosmicKrisp as the device does. A macOS
+# framework is a versioned bundle, so the shallow GPU frameworks of the macOS
+# prefix are packaged in that layout. The storage and compression
+# XCFrameworks, and the test archives, have no macOS slice yet.
 #
 # --automation packages the automation Linux runtimes, which boot host
 # payloads (Kernarium/README.md), in place of the release ones. The Linux
@@ -70,14 +77,14 @@ ANDROID_AUTOMATION=0
 APP_STORE=0
 RUNTIMES=all
 SDKS=
-USAGE="usage: package-ios-frameworks.sh [--sdk device|simulator]... [--automation] [--android-automation] [--app-store] [--runtimes all|android]"
+USAGE="usage: package-ios-frameworks.sh [--sdk device|simulator|macos]... [--automation] [--android-automation] [--app-store] [--runtimes all|android]"
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	--sdk)
 		[ "$#" -ge 2 ] || fail "$USAGE"
 		case "$2" in
-		device | simulator) ;;
-		*) fail "--sdk takes device or simulator: $2" ;;
+		device | simulator | macos) ;;
+		*) fail "--sdk takes device, simulator or macos: $2" ;;
 		esac
 		case " $SDKS " in
 		*" $2 "*) fail "--sdk $2 is named twice" ;;
@@ -111,9 +118,15 @@ if [ "$APP_STORE" -eq 1 ]; then
 	[ "$AUTOMATION" -eq 0 ] && [ "$ANDROID_AUTOMATION" -eq 0 ] ||
 		fail "--app-store conflicts with the automation options"
 	case " $SDKS " in
-	*" simulator "*) fail "--app-store packages the device alone" ;;
+	*" simulator "* | *" macos "*) fail "--app-store packages the device alone" ;;
 	esac
 fi
+case " $SDKS " in
+*" macos "*)
+	[ "$RUNTIMES" = android ] ||
+		fail "the macOS slice carries the Android runtime alone; add --runtimes android"
+	;;
+esac
 
 find_tool()
 {
@@ -177,6 +190,14 @@ SIMULATOR_RUNTIME_4K="$ROOT_DIR/.build/$SIMULATOR_RUNTIME_TREE/Kernarium/Runtime
 SIMULATOR_RUNTIME_ANDROID="$ROOT_DIR/.build/$SIMULATOR_ANDROID_TREE/Kernarium/Runtime/$RUNTIME_ANDROID_4K.framework"
 SIMULATOR_GPU_PREFIX=${KERNARIUM_SIMULATOR_GPU_PREFIX:-"$ROOT_DIR/.build/dependencies/apple-gpu-vulkan-experiment/ios-simulator-arm64"}
 SIMULATOR_GPU="$SIMULATOR_GPU_PREFIX/Frameworks"
+# The macOS slice's runtime is the macOS preset's, and its GPU prefix the
+# macOS one; KERNARIUM_MACOS_GPU_PREFIX names another.
+MACOS_ANDROID_TREE=kernarium-runtime-macos-android-4k
+[ "$ANDROID_AUTOMATION" -eq 0 ] ||
+	MACOS_ANDROID_TREE=kernarium-runtime-macos-android-4k-automation
+MACOS_RUNTIME_ANDROID="$ROOT_DIR/.build/$MACOS_ANDROID_TREE/Kernarium/Runtime/$RUNTIME_ANDROID_4K.framework"
+MACOS_GPU_PREFIX=${KERNARIUM_MACOS_GPU_PREFIX:-"$ROOT_DIR/.build/dependencies/apple-gpu-vulkan-experiment/macos-arm64"}
+MACOS_GPU="$MACOS_GPU_PREFIX/Frameworks"
 STORAGE="$ROOT_DIR/.build/dependencies/ios-storage/GPTFDisk.xcframework"
 ZSTD="$ROOT_DIR/.build/dependencies/ios-zstd/LibZstd.xcframework"
 HOST_BATTERY="$ROOT_DIR/.build/$ANDROID_TREE/darwin/platform/libuml_host_battery.a"
@@ -206,6 +227,10 @@ fi
 if has_sdk simulator; then
 	"$ROOT_DIR/dependencies/build-apple-gpu.sh" --platform ios-simulator \
 		--prefix "$SIMULATOR_GPU_PREFIX" --verify-only
+fi
+if has_sdk macos; then
+	"$ROOT_DIR/dependencies/build-apple-gpu.sh" --platform macos \
+		--prefix "$MACOS_GPU_PREFIX" --verify-only
 fi
 
 for framework in \
@@ -245,6 +270,16 @@ if has_sdk simulator; then
 	[ -f "$SIMULATOR_HOST_VIDEO_ENCODER" ] ||
 		fail "missing host video encoder archive: $SIMULATOR_HOST_VIDEO_ENCODER"
 fi
+if has_sdk macos; then
+	[ -d "$MACOS_RUNTIME_ANDROID" ] ||
+		fail "missing framework slice: $MACOS_RUNTIME_ANDROID"
+	[ -L "$MACOS_RUNTIME_ANDROID/Versions/Current" ] ||
+		fail "the macOS runtime is not a versioned framework: $MACOS_RUNTIME_ANDROID"
+	for framework in $GPU_FRAMEWORKS; do
+		[ -d "$MACOS_GPU/$framework.framework" ] ||
+			fail "missing framework slice: $MACOS_GPU/$framework.framework"
+	done
+fi
 
 OUTPUT_PARENT=$(dirname -- "$OUTPUT")
 mkdir -p -- "$OUTPUT_PARENT"
@@ -259,7 +294,8 @@ cleanup()
 }
 trap cleanup EXIT HUP INT TERM
 
-# create_xcframework NAME DEVICE-FRAMEWORK SIMULATOR-FRAMEWORK DEVICE-DSYM SIMULATOR-DSYM:
+# create_xcframework NAME DEVICE-FRAMEWORK SIMULATOR-FRAMEWORK DEVICE-DSYM
+#     SIMULATOR-DSYM [MACOS-FRAMEWORK MACOS-DSYM]:
 # each selected slice carries its original dSYM so Xcode copies it into an
 # archive. An empty framework leaves its SDK out.
 create_xcframework()
@@ -269,6 +305,8 @@ create_xcframework()
 	simulator_framework=$3
 	device_symbols=$4
 	simulator_symbols=$5
+	macos_framework=${6:-}
+	macos_symbols=${7:-}
 	set -- -create-xcframework
 	if [ -n "$device_framework" ]; then
 		[ -d "$device_symbols" ] ||
@@ -279,6 +317,11 @@ create_xcframework()
 		[ -d "$simulator_symbols" ] ||
 			fail "missing debug symbols: $simulator_symbols; rebuild the framework"
 		set -- "$@" -framework "$simulator_framework" -debug-symbols "$simulator_symbols"
+	fi
+	if [ -n "$macos_framework" ]; then
+		[ -d "$macos_symbols" ] ||
+			fail "missing debug symbols: $macos_symbols; rebuild the framework"
+		set -- "$@" -framework "$macos_framework" -debug-symbols "$macos_symbols"
 	fi
 	"$XCODEBUILD" "$@" \
 		-output "$STAGE/$name.xcframework"
@@ -295,6 +338,69 @@ simulator_slice()
 {
 	if has_sdk simulator; then printf '%s' "$1"; fi
 }
+macos_slice()
+{
+	if has_sdk macos; then printf '%s' "$1"; fi
+}
+
+# versioned_framework SOURCE: copies the shallow framework SOURCE, in the
+# versioned layout a macOS application embeds (Versions/A, Versions/Current,
+# and links at the root), to $STAGE/.versioned. It runs in the script's own
+# shell, never in a command substitution, so that a failure stops packaging.
+versioned_framework()
+{
+	shallow=$1
+	framework_name=$(basename -- "$shallow" .framework)
+	versioned="$STAGE/.versioned/$framework_name.framework"
+	"$CMAKE" -E remove_directory "$versioned"
+	mkdir -p -- "$versioned/Versions/A/Resources"
+	for entry in "$shallow"/* "$shallow"/.[!.]*; do
+		[ -e "$entry" ] || [ -L "$entry" ] || continue
+		entry_name=$(basename -- "$entry")
+		case "$entry_name" in
+		"$framework_name")
+			cp -p -- "$entry" "$versioned/Versions/A/$framework_name" ;;
+		Info.plist | PrivacyInfo.xcprivacy)
+			cp -p -- "$entry" "$versioned/Versions/A/Resources/$entry_name" ;;
+		_CodeSignature) ;;
+		*)
+			[ -d "$entry" ] ||
+				fail "$shallow has an unexpected file at its root: $entry_name"
+			cp -R -p -- "$entry" "$versioned/Versions/A/$entry_name"
+			ln -s "Versions/Current/$entry_name" "$versioned/$entry_name"
+			;;
+		esac
+	done
+	[ -f "$versioned/Versions/A/$framework_name" ] ||
+		fail "$shallow has no framework binary"
+	[ -f "$versioned/Versions/A/Resources/Info.plist" ] ||
+		fail "$shallow has no Info.plist"
+	ln -s A "$versioned/Versions/Current"
+	ln -s "Versions/Current/$framework_name" "$versioned/$framework_name"
+	ln -s Versions/Current/Resources "$versioned/Resources"
+}
+if has_sdk macos; then
+	for framework in $GPU_FRAMEWORKS; do
+		versioned_framework "$MACOS_GPU/$framework.framework"
+	done
+fi
+# The macOS slice of a GPU framework, in the versioned layout; empty when the
+# macOS SDK is not packaged.
+macos_gpu_slice()
+{
+	if has_sdk macos; then printf '%s' "$STAGE/.versioned/$1.framework"; fi
+}
+
+# framework_binary FRAMEWORK-DIRECTORY NAME: the framework's binary itself,
+# not the link a versioned bundle has at its root.
+framework_binary()
+{
+	if [ -L "$1/Versions/Current" ]; then
+		printf '%s' "$1/Versions/Current/$2"
+	else
+		printf '%s' "$1/$2"
+	fi
+}
 
 # Every slice of every packaged SDK: the framework slices of the runtimes and
 # the GPU stack, each built for its own platform (Mach-O platform 2 for the
@@ -302,6 +408,7 @@ simulator_slice()
 PACKAGED_SLICES=
 has_sdk device && PACKAGED_SLICES="$PACKAGED_SLICES ios-arm64:2"
 has_sdk simulator && PACKAGED_SLICES="$PACKAGED_SLICES ios-arm64-simulator:7"
+has_sdk macos && PACKAGED_SLICES="$PACKAGED_SLICES macos-arm64:1"
 RUNTIME_FRAMEWORKS="$RUNTIME_ANDROID_4K"
 if [ "$RUNTIMES" = all ]; then
 	RUNTIME_FRAMEWORKS="$RUNTIME_4K $RUNTIME_ANDROID_4K"
@@ -313,19 +420,27 @@ fi
 create_xcframework "$RUNTIME_ANDROID_4K" \
 	"$(device_slice "$DEVICE_RUNTIME_ANDROID")" \
 	"$(simulator_slice "$SIMULATOR_RUNTIME_ANDROID")" \
-	"$DEVICE_RUNTIME_ANDROID.dSYM" "$SIMULATOR_RUNTIME_ANDROID.dSYM"
+	"$DEVICE_RUNTIME_ANDROID.dSYM" "$SIMULATOR_RUNTIME_ANDROID.dSYM" \
+	"$(macos_slice "$MACOS_RUNTIME_ANDROID")" "$MACOS_RUNTIME_ANDROID.dSYM"
 for framework in $GL_FRAMEWORKS; do
 	create_xcframework "$framework" \
 		"$(device_slice "$DEVICE_GPU/$framework.framework")" \
 		"$(simulator_slice "$SIMULATOR_GPU/$framework.framework")" \
 		"$DEVICE_GPU_PREFIX/dSYMs/$framework.framework.dSYM" \
-		"$SIMULATOR_GPU_PREFIX/dSYMs/$framework.framework.dSYM"
+		"$SIMULATOR_GPU_PREFIX/dSYMs/$framework.framework.dSYM" \
+		"$(macos_gpu_slice "$framework")" \
+		"$MACOS_GPU_PREFIX/dSYMs/$framework.framework.dSYM"
 done
-# KosmicKrisp needs Metal 4, so it has a device slice alone.
-if has_sdk device; then
-	create_xcframework KosmicKrisp "$DEVICE_GPU/KosmicKrisp.framework" "" \
-		"$DEVICE_GPU_PREFIX/dSYMs/KosmicKrisp.framework.dSYM" ""
+# KosmicKrisp needs Metal 4, so it has device and macOS slices and no
+# Simulator one.
+if has_sdk device || has_sdk macos; then
+	create_xcframework KosmicKrisp \
+		"$(device_slice "$DEVICE_GPU/KosmicKrisp.framework")" "" \
+		"$DEVICE_GPU_PREFIX/dSYMs/KosmicKrisp.framework.dSYM" "" \
+		"$(macos_gpu_slice KosmicKrisp)" \
+		"$MACOS_GPU_PREFIX/dSYMs/KosmicKrisp.framework.dSYM"
 fi
+"$CMAKE" -E remove_directory "$STAGE/.versioned"
 # install_privacy_manifest FRAMEWORK MANIFEST: the manifest goes into every
 # slice of the framework's XCFramework.
 PRIVACY_MANIFESTS="$ROOT_DIR/Kernarium/PrivacyManifests"
@@ -333,8 +448,12 @@ install_privacy_manifest()
 {
 	for slice_framework in "$STAGE/$1.xcframework"/*/"$1.framework"; do
 		[ -d "$slice_framework" ] || fail "$1 XCFramework has no framework slice"
+		# A versioned (macOS) framework keeps its manifest in Resources.
+		manifest_directory=$slice_framework
+		[ ! -L "$slice_framework/Versions/Current" ] ||
+			manifest_directory="$slice_framework/Versions/Current/Resources"
 		cp -- "$PRIVACY_MANIFESTS/$2.xcprivacy" \
-			"$slice_framework/PrivacyInfo.xcprivacy" ||
+			"$manifest_directory/PrivacyInfo.xcprivacy" ||
 			fail "could not install the privacy manifest of $1"
 	done
 }
@@ -344,15 +463,18 @@ strip_debug_maps()
 {
 	for stripped_framework in "$@"; do
 		for slice_framework in "$STAGE/$stripped_framework.xcframework"/*/"$stripped_framework.framework"; do
-			[ -f "$slice_framework/$stripped_framework" ] ||
+			# strip rewrites its file, so it is given the binary, never the
+			# link at a versioned framework's root.
+			stripped_binary=$(framework_binary "$slice_framework" "$stripped_framework")
+			[ -f "$stripped_binary" ] && [ ! -L "$stripped_binary" ] ||
 				fail "$stripped_framework XCFramework has no framework binary in $slice_framework"
-			"$STRIP" -S "$slice_framework/$stripped_framework" ||
+			"$STRIP" -S "$stripped_binary" ||
 				fail "could not strip the debug map of $slice_framework"
 		done
 	done
 }
 strip_debug_maps $RUNTIME_FRAMEWORKS $GL_FRAMEWORKS
-if has_sdk device; then
+if has_sdk device || has_sdk macos; then
 	strip_debug_maps KosmicKrisp
 fi
 # A runtime's dSYM names the kernel's functions at their place in the carrier
@@ -408,19 +530,21 @@ create_archive_xcframework()
 	[ -f "$STAGE/$name.xcframework/Info.plist" ] ||
 		fail "$name XCFramework was not created"
 }
-create_archive_xcframework HostBattery "$HOST_BATTERY_HEADER" -- \
-	"$(device_slice "$HOST_BATTERY")" \
-	"$(simulator_slice "$SIMULATOR_HOST_BATTERY")"
-# shellcheck disable=SC2086
-create_archive_xcframework HostVideoEncoder $HOST_VIDEO_ENCODER_HEADERS -- \
-	"$(device_slice "$HOST_VIDEO_ENCODER")" \
-	"$(simulator_slice "$SIMULATOR_HOST_VIDEO_ENCODER")"
+if has_sdk device || has_sdk simulator; then
+	create_archive_xcframework HostBattery "$HOST_BATTERY_HEADER" -- \
+		"$(device_slice "$HOST_BATTERY")" \
+		"$(simulator_slice "$SIMULATOR_HOST_BATTERY")"
+	# shellcheck disable=SC2086
+	create_archive_xcframework HostVideoEncoder $HOST_VIDEO_ENCODER_HEADERS -- \
+		"$(device_slice "$HOST_VIDEO_ENCODER")" \
+		"$(simulator_slice "$SIMULATOR_HOST_VIDEO_ENCODER")"
+fi
 
 packaged_frameworks()
 {
 	slice=$1
 	case "$slice" in
-	ios-arm64) printf '%s ' $RUNTIME_FRAMEWORKS $GPU_FRAMEWORKS ;;
+	ios-arm64 | macos-arm64) printf '%s ' $RUNTIME_FRAMEWORKS $GPU_FRAMEWORKS ;;
 	*) printf '%s ' $RUNTIME_FRAMEWORKS $GL_FRAMEWORKS ;;
 	esac
 }
@@ -440,8 +564,11 @@ for slice_platform in $PACKAGED_SLICES; do
 		[ "$binary_platform" = "$platform" ] ||
 			fail "$framework is built for platform $binary_platform, not the $slice slice's $platform"
 	done
-	# Each archive's objects are built for the slice's own platform.
-	for archive in HostBattery:libuml_host_battery HostVideoEncoder:libuml_video_encoder; do
+	# Each archive's objects are built for the slice's own platform. The test
+	# archives serve KernariumTests, which has no macOS slice.
+	archives_of_slice="HostBattery:libuml_host_battery HostVideoEncoder:libuml_video_encoder"
+	[ "$slice" != macos-arm64 ] || archives_of_slice=
+	for archive in $archives_of_slice; do
 		library="$STAGE/${archive%%:*}.xcframework/$slice/${archive##*:}.a"
 		[ -f "$library" ] || fail "missing packaged host archive: $library"
 		archive_platforms=$("$OTOOL" -l "$library" | awk '
@@ -460,7 +587,11 @@ for slice_platform in $PACKAGED_SLICES; do
 				command = ""
 			}
 		')
-		[ "$rpaths" = '@loader_path/..' ] ||
+		# The GPU frameworks sit beside the runtime in Frameworks: one level
+		# above an iOS framework's binary, three above a versioned one's.
+		expected_rpath='@loader_path/..'
+		[ "$slice" != macos-arm64 ] || expected_rpath='@loader_path/../../..'
+		[ "$rpaths" = "$expected_rpath" ] ||
 			fail "$framework has an invalid runtime search path: $rpaths"
 	done
 done
@@ -471,13 +602,14 @@ if has_sdk simulator; then
 fi
 # The software renderer is the Simulator's alone: no device slice carries it,
 # and the Simulator's GL provider does.
-if has_sdk device; then
+for hardware_slice in ios-arm64:device macos-arm64:macos; do
+	has_sdk "${hardware_slice##*:}" || continue
 	for framework in $RUNTIME_FRAMEWORKS $GPU_FRAMEWORKS; do
 		"$PYTHON" -B "$ROOT_DIR/scripts/check-software-renderer.py" --absent \
-			"$STAGE/$framework.xcframework/ios-arm64" ||
-			fail "a device slice of $framework carries the software renderer"
+			"$STAGE/$framework.xcframework/${hardware_slice%%:*}" ||
+			fail "the ${hardware_slice##*:} slice of $framework carries the software renderer"
 	done
-fi
+done
 if has_sdk simulator; then
 	"$PYTHON" -B "$ROOT_DIR/scripts/check-software-renderer.py" --present \
 		"$STAGE/MesaGallium.xcframework/ios-arm64-simulator" ||
@@ -489,6 +621,7 @@ for slice_platform in $PACKAGED_SLICES; do
 	slice=${slice_platform%%:*}
 	case "$slice" in
 	ios-arm64) preset=kernarium-ios-device ;;
+	macos-arm64) preset=kernarium-macos ;;
 	*) preset=kernarium-ios-simulator ;;
 	esac
 	if [ "$RUNTIMES" = all ]; then

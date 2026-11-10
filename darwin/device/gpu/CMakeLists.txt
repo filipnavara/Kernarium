@@ -83,6 +83,7 @@ set(_uml_gpu_display_sources
     display_geometry.cpp
     display_resize_notifier.cpp
     display.cpp
+    embedded_display.mm
     frame_tap.cpp
     metal_presentation.mm
     metal_scanout_shader.mm

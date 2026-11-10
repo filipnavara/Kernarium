@@ -215,12 +215,14 @@ scripts/build-xcframework.sh
 ```
 
 Kernarium has runtime presets for Linux and Android on the iOS device
-(`kernarium-ios-device*`) and the iOS Simulator (`kernarium-ios-simulator*`).
+(`kernarium-ios-device*`) and the iOS Simulator (`kernarium-ios-simulator*`),
+and for Android on macOS (`kernarium-macos-android*`).
 `Kernarium/scripts/package-ios-frameworks.sh` packages the selected runtime and
-graphics slices for Xcode (`--sdk device|simulator`). No Simulator product is
+graphics slices for Xcode (`--sdk device|simulator|macos`; the macOS slice
+needs `--runtimes android`). No Simulator product is
 built for x86_64, so a generic Simulator destination needs
-`EXCLUDED_ARCHS=x86_64` on the `xcodebuild` command line. KosmicKrisp has a
-device slice only; the app targets embed it with
+`EXCLUDED_ARCHS=x86_64` on the `xcodebuild` command line. KosmicKrisp has
+device and macOS slices and no Simulator one; the iOS app targets embed it with
 `Kernarium/scripts/embed-device-framework.sh`. Both projects sign with the team
 in the ignored `GuestHost/Config/Signing.local.xcconfig`
 ([setup](../GuestHost/README.md#signing)); without it a Simulator build works

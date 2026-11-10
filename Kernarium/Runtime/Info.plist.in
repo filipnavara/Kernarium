@@ -18,7 +18,7 @@
 	<string>@MACOSX_FRAMEWORK_SHORT_VERSION_STRING@</string>
 	<key>CFBundleVersion</key>
 	<string>@MACOSX_FRAMEWORK_BUNDLE_VERSION@</string>
-	<key>MinimumOSVersion</key>
+	<key>@KERNARIUM_RUNTIME_MINIMUM_OS_KEY@</key>
 	<string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
 </dict>
 </plist>

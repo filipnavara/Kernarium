@@ -195,7 +195,12 @@ mainline tree with the Android configuration) for Android. Kernarium and
 Andarium are iOS products ([`../Kernarium/README.md`](../Kernarium/README.md),
 [`../Andarium/README.md`](../Andarium/README.md)); the device slice also runs on
 an Apple silicon Mac, and the Simulator has a UI-test variant with the
-CPU-rendering GPU prefix ([`graphics.md`](graphics.md)).
+CPU-rendering GPU prefix ([`graphics.md`](graphics.md)). The Android runtime
+framework also has a native macOS slice (`kernarium-macos-android`), a
+versioned bundle with the macOS GPU stack. Wherever a host application hands
+the runtime its own `MTKView`, the guest display draws into that view
+(`device/gpu/embedded_display.hpp`) and input arrives through the runtime's
+API; the macOS launchers, which hand it none, open their own window.
 
 ## CPU execution and scheduling
 

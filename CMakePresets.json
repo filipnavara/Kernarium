@@ -251,6 +251,31 @@
       "cacheVariables": {
         "UML_KERNARIUM_AUTOMATION_HARNESS": true
       }
+    },
+    {
+      "name": "kernarium-macos-android",
+      "displayName": "Kernarium macOS Android runtime (4 KiB)",
+      "inherits": "macos-unit",
+      "binaryDir": "${sourceDir}/.build/kernarium-runtime-macos-android-4k",
+      "cacheVariables": {
+        "UML_BUILD_KERNEL_RUNNER": true,
+        "UML_BUILD_NETWORK_PROVIDER": true,
+        "UML_BUILD_GPU": true,
+        "UML_BUILD_AUDIO": true,
+        "UML_BUILD_KERNARIUM_RUNTIME": true,
+        "UML_BUILD_UNIT_TESTS": false,
+        "UML_BUILD_TOOLING_TESTS": false,
+        "UML_KERNEL_PRODUCT": "android-17"
+      }
+    },
+    {
+      "name": "kernarium-macos-android-automation",
+      "displayName": "Kernarium macOS Android automation runtime (4 KiB)",
+      "inherits": "kernarium-macos-android",
+      "binaryDir": "${sourceDir}/.build/kernarium-runtime-macos-android-4k-automation",
+      "cacheVariables": {
+        "UML_KERNARIUM_AUTOMATION_HARNESS": true
+      }
     }
   ],
   "buildPresets": [
@@ -367,6 +392,16 @@
     {
       "name": "kernarium-ios-simulator-android-automation",
       "configurePreset": "kernarium-ios-simulator-android-automation",
+      "targets": ["KernariumRuntime", "architecture-audit"]
+    },
+    {
+      "name": "kernarium-macos-android",
+      "configurePreset": "kernarium-macos-android",
+      "targets": ["KernariumRuntime", "architecture-audit"]
+    },
+    {
+      "name": "kernarium-macos-android-automation",
+      "configurePreset": "kernarium-macos-android-automation",
       "targets": ["KernariumRuntime", "architecture-audit"]
     }
   ],

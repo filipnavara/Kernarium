@@ -85,7 +85,7 @@ option(UML_BUILD_GPU "Build the host GPU/display provider" ${UML_TARGET_MACOS})
 option(UML_BUILD_AUDIO "Build the host Virtio Sound playback provider"
     ${UML_BUILD_GPU})
 option(UML_BUILD_KERNARIUM_RUNTIME
-    "Build the Kernarium application framework for iOS" OFF)
+    "Build the Kernarium application framework for iOS or macOS" OFF)
 if(UML_BUILD_KERNARIUM_RUNTIME)
     # The framework's dSYM needs debug information from its whole static
     # closure, including optimized Release objects.

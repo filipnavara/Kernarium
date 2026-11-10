@@ -2,6 +2,7 @@
 
 #include "native_display.hpp"
 
+#include "embedded_display.hpp"
 #include "native_display_state.hpp"
 #include "native_display_application.hpp"
 #include "platform/guest_timer_mask.hpp"
@@ -1139,11 +1140,18 @@ NativeDisplay::NativeDisplay(
     std::uint32_t width,
     std::uint32_t height,
     native_input::VncInputSink inputSink,
-    void*,
+    void* nativeView,
     native_input::PointerMode pointerMode,
     std::uint32_t maximumDimension,
     bool autoResizeGuest)
 {
+    /* A host application that owns the view (the runtime framework) gets the
+     * embedded display iOS uses; a standalone launcher gets its own window. */
+    if (nativeView != nullptr) {
+        state_ = makeEmbeddedDisplayState(
+            width, height, nativeView, maximumDimension, autoResizeGuest);
+        return;
+    }
     auto state = std::make_shared<NativeDisplayState>(
         width,
         height,

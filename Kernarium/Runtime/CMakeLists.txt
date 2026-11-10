@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-if(NOT UML_APPLE_PLATFORM MATCHES "^ios" OR
-   NOT UML_BUILD_KERNEL_RUNNER OR NOT UML_BUILD_GPU OR
+if(NOT UML_BUILD_KERNEL_RUNNER OR NOT UML_BUILD_GPU OR
    NOT UML_BUILD_AUDIO OR NOT UML_BUILD_NETWORK_PROVIDER)
     message(FATAL_ERROR
-        "KernariumRuntime requires the iOS runner, GPU, audio, and network")
+        "KernariumRuntime requires the runner, GPU, audio, and network")
+endif()
+# The macOS slice serves a native macOS Andarium. Its guest runs arm64 code
+# alone: the x86-64 JIT and the FEXCore it embeds stay out of every runtime.
+if(UML_BUILD_X86_64_JIT)
+    message(FATAL_ERROR "KernariumRuntime must not build the x86-64 JIT")
 endif()
 
 if(NOT UML_ACTIVE_KERNEL_ARTIFACT_TARGET OR
@@ -125,8 +129,10 @@ target_link_libraries(KernariumRuntime PRIVATE
     UML::NetworkProvider
     "-framework Foundation"
     "-framework Metal"
-    "-framework MetalKit"
-    "-framework UIKit")
+    "-framework MetalKit")
+if(NOT UML_TARGET_MACOS)
+    target_link_libraries(KernariumRuntime PRIVATE "-framework UIKit")
+endif()
 target_compile_definitions(KernariumRuntime PRIVATE
     KERNARIUM_RUNTIME_ANDROID_GUEST=${KERNARIUM_RUNTIME_ANDROID_GUEST}
     KERNARIUM_RUNTIME_GUEST_FLAVOR=${KERNARIUM_RUNTIME_GUEST_FLAVOR}
@@ -159,7 +165,9 @@ endif()
 add_dependencies(KernariumRuntime
     "${UML_ACTIVE_KERNEL_ARTIFACT_TARGET}"
     uml_dependency_prefix_verify)
-add_dependencies(KernariumRuntime uml_ios_network_prefix_verify)
+if(TARGET uml_ios_network_prefix_verify)
+    add_dependencies(KernariumRuntime uml_ios_network_prefix_verify)
+endif()
 set_property(TARGET KernariumRuntime APPEND PROPERTY LINK_DEPENDS
     "${_kernarium_kernel_image}")
 # The framework's Info.plist (Info.plist.in) names and versions it, as App
@@ -182,13 +190,27 @@ if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     message(FATAL_ERROR
         "KernariumRuntime needs the Apple deployment target for its Info.plist")
 endif()
+# Info.plist.in names the minimum system by the platform's own key.
+if(UML_TARGET_MACOS)
+    set(KERNARIUM_RUNTIME_MINIMUM_OS_KEY LSMinimumSystemVersion)
+else()
+    set(KERNARIUM_RUNTIME_MINIMUM_OS_KEY MinimumOSVersion)
+endif()
 
+# The runtime finds the GPU frameworks beside it in the application's
+# Frameworks directory: one level above an iOS framework's binary, three above
+# a macOS one's (Name.framework/Versions/A/Name).
+if(UML_TARGET_MACOS)
+    set(_kernarium_runtime_rpath "@loader_path/../../..")
+else()
+    set(_kernarium_runtime_rpath "@loader_path/..")
+endif()
 set_target_properties(KernariumRuntime PROPERTIES
     OUTPUT_NAME "${KERNARIUM_RUNTIME_FRAMEWORK_NAME}"
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
     BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "@loader_path/.."
+    INSTALL_RPATH "${_kernarium_runtime_rpath}"
     INSTALL_RPATH_USE_LINK_PATH FALSE
     MACOSX_FRAMEWORK_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
     MACOSX_FRAMEWORK_BUNDLE_NAME "${KERNARIUM_RUNTIME_FRAMEWORK_NAME}"
@@ -207,14 +229,31 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/module.modulemap"
     @ONLY)
 
+# A macOS framework is a versioned bundle: its module map lives in the
+# version directory and the bundle's root links to it, as Headers does.
+if(UML_TARGET_MACOS)
+    set(_kernarium_runtime_modules
+        "$<TARGET_BUNDLE_DIR:KernariumRuntime>/Versions/A/Modules")
+else()
+    set(_kernarium_runtime_modules
+        "$<TARGET_BUNDLE_DIR:KernariumRuntime>/Modules")
+endif()
 add_custom_command(TARGET KernariumRuntime POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory
-        "$<TARGET_BUNDLE_DIR:KernariumRuntime>/Modules"
+        "${_kernarium_runtime_modules}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/module.modulemap"
-        "$<TARGET_BUNDLE_DIR:KernariumRuntime>/Modules/module.modulemap"
+        "${_kernarium_runtime_modules}/module.modulemap"
     COMMENT "Installing the versioned Kernarium runtime module map"
     VERBATIM)
+if(UML_TARGET_MACOS)
+    add_custom_command(TARGET KernariumRuntime POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E create_symlink
+            Versions/Current/Modules
+            "$<TARGET_BUNDLE_DIR:KernariumRuntime>/Modules"
+        COMMENT "Linking the Kernarium runtime module map from the bundle root"
+        VERBATIM)
+endif()
 
 # The dSYM, and only the dSYM, also names the kernel's functions at their place
 # in the __TEXT,__uml_elf section: the runtime moves a panic's kernel frames
