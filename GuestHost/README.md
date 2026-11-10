@@ -1,6 +1,6 @@
 # GuestHost
 
-GuestHost is the iOS source that [Kernarium](../Kernarium/README.md) and
+GuestHost is the iOS and macOS source that [Kernarium](../Kernarium/README.md) and
 [Andarium](../Andarium/README.md) share: what it takes to host one guest on a
 Kernarium runtime framework and show it. Each application compiles
 `GuestHost/Sources/` into its own module as a synchronized folder, so the types
@@ -20,16 +20,23 @@ Core/                                  GuestHostCore, a Swift package both
                                        free-space thresholds (RunSpace), the start
                                        check's text (StartSpace), and the pause
                                        for space (SpacePauser, SuspensionCheck,
-                                       SpacePause)
+                                       SpacePause), and a Mac's keys and pointer
+                                       gestures as the guest gets them
+                                       (MacKeyboard, GuestScrollDrag, GuestPinch)
 Sources/KernariumRuntimeLoader.h/.mm   loads the embedded runtime framework and
                                        wraps its C API (Runtime/KernariumRuntime.h)
-Sources/GuestDisplay.swift             the Metal view that shows the guest's display,
-                                       its view controller, and the SwiftUI wrapper
+Sources/GuestDisplay.swift             iOS: the Metal view that shows the guest's
+                                       display, its view controller, and the SwiftUI
+                                       wrapper
+Sources/GuestDisplayMac.swift          macOS: the same view and wrapper in AppKit
+Sources/GuestDisplayGeometry.swift     the display's size and density, and the
+                                       resize notifications the runtime observes
 Sources/GuestInput.swift               touch and pointer mapping onto the guest's
                                        touchscreen range, display viewport geometry
 Sources/GuestResizeHold.swift          when the guest keeps its display mode while the
                                        host view changes size
-Sources/SceneCoverage.swift            whether a window scene fills its screen
+Sources/SceneCoverage.swift            whether a window scene (on a Mac, a window)
+                                       fills its screen
 Sources/GuestRestartEvent.swift        a restart the guest asked for, as the runtime
                                        reports it
 Sources/LinuxKeyboard.swift            characters to Linux key codes
@@ -77,8 +84,16 @@ application that draws controls over the display passes `touchDidBegin`, which
 the display calls after it has sent the contacts of each touch that begins on
 it; Kernarium passes none.
 
-- A file here depends only on the system frameworks, the runtime header, and
-  the prebuilt `LibZstd` XCFramework. It names neither application's views,
+On a Mac the pointer is a finger on the guest's touchscreen: the primary
+button touches, a scroll is a one-finger drag from the pointer (Android flings
+from its speed, so the host's momentum moves nothing) and a pinch is two
+fingers either side of it, each a contact of its own. The secondary button is
+Android's Back key. Keys reach the guest by their position, and only those the
+guest's keyboard advertises; Command is the host's. Keys held when the view
+loses the keyboard focus, or its window stops being key, are released.
+
+- A file here depends only on the system frameworks, the runtime header,
+  `GuestHostCore`, and the prebuilt `LibZstd` XCFramework. It names neither application's views,
   settings or product text; an application supplies those.
 - The applications build with the same Swift settings (Swift 5 language mode,
   main-actor default isolation, approachable concurrency), because these

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Whether a window scene fills its screen, and so has no window controls
 /// over its content: Full Screen Apps, and a window zoomed to the screen,
@@ -14,12 +17,14 @@ enum SceneCoverage {
             && abs(sceneSize.height - screenSize.height) < 0.5
     }
 
+#if os(iOS)
     static func covers(_ scene: UIWindowScene) -> Bool {
         covers(
             sceneSize: scene.effectiveGeometry.coordinateSpace.bounds.size,
             screenSize: scene.screen.bounds.size
         )
     }
+#endif
 
     /// The edges whose corner offset the guest view takes: the top, which
     /// the window controls overlay, unless the scene covers the screen.
@@ -28,6 +33,7 @@ enum SceneCoverage {
     }
 }
 
+#if os(iOS)
 /// Reports, now and whenever the scene's geometry changes, whether the
 /// scene the view is in covers its screen. The system's corner offset keeps
 /// describing a window after Multitasking switches the scene to Full Screen
@@ -80,3 +86,59 @@ final class SceneCoverageView: UIView {
         }
     }
 }
+#else
+/// Reports, now and whenever its window enters or leaves full screen, whether
+/// the window the view is in covers its screen. A Mac window's controls are in
+/// its title bar, above the content, and full screen hides them.
+struct SceneCoverageReader: NSViewRepresentable {
+    let report: @MainActor (Bool) -> Void
+
+    func makeNSView(context: Context) -> SceneCoverageView {
+        let view = SceneCoverageView()
+        view.report = report
+        return view
+    }
+
+    func updateNSView(_ view: SceneCoverageView, context: Context) {
+        view.report = report
+    }
+}
+
+final class SceneCoverageView: NSView {
+    var report: (@MainActor (Bool) -> Void)?
+    private var observers: [NSObjectProtocol] = []
+    private var reported: Bool?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        let center = NotificationCenter.default
+        observers.forEach(center.removeObserver)
+        observers = []
+        guard let window else { return }
+        for name in [
+            NSWindow.didEnterFullScreenNotification,
+            NSWindow.didExitFullScreenNotification,
+        ] {
+            observers.append(center.addObserver(
+                forName: name, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.update() }
+            })
+        }
+        update()
+    }
+
+    private func update() {
+        guard let window else { return }
+        let covers = window.styleMask.contains(.fullScreen)
+        guard covers != reported else { return }
+        reported = covers
+        // SwiftUI state is not written from inside its own layout pass.
+        DispatchQueue.main.async { [weak self] in
+            self?.report?(covers)
+        }
+    }
+}
+#endif

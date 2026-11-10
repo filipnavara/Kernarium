@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+import CoreGraphics
 import Foundation
-import UIKit
 
 /// The coordinates the guest's touchscreen takes, in a space of `size`
 /// positions on each axis.
@@ -145,7 +145,7 @@ struct GuestTouchContactEvent: Equatable {
     let event: GuestTouchEvent
 }
 
-/// Each UIKit contact owns a path and a stable slot, including while it is
+/// Each host contact owns a path and a stable slot, including while it is
 /// outside the guest's visible rectangle. Excess fingers stay ignored until
 /// they lift, so freeing a slot cannot turn a held finger into a new gesture.
 /// A contact UIKit takes away, and every contact when the display mode changes

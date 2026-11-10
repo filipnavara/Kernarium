@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#if os(iOS)
 import Combine
 import Foundation
 import MetalKit
 import SwiftUI
 import UIKit
-
-struct GuestDisplayGeometry {
-    let pixelSize: CGSize
-    let dotsPerInch: UInt32
-}
 
 struct GuestDisplayView: UIViewControllerRepresentable {
     @Binding var keyboardVisible: Bool
@@ -118,15 +114,6 @@ final class GuestDisplayViewController: UIViewController {
 }
 
 
-
-private extension Notification.Name {
-    static let guestDisplayResizeWillBegin = Notification.Name(
-        "org.linux-um-darwin.guest-display-resize-will-begin"
-    )
-    static let guestDisplayResizeDidEnd = Notification.Name(
-        "org.linux-um-darwin.guest-display-resize-did-end"
-    )
-}
 
 final class GuestMetalView: MTKView, UIKeyInput {
     var viewDidLayout: (@MainActor (
@@ -331,4 +318,4 @@ final class GuestMetalView: MTKView, UIKeyInput {
         kernarium_runtime_loader_send_key(code, pressed ? 1 : 0)
     }
 }
-
+#endif
